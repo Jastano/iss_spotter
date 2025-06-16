@@ -1,19 +1,35 @@
 const needle = require('needle');
 
-const fetchCoordsByIP = function(ip, callback) {
-  const url = `https://ipwho.is/${ip}`;
-
+const fetchMyIP = function(callback) {
+  const url = 'https://api.ipify.org?format=json';
   needle.get(url, (error, response, body) => {
     if (error) {
       callback(error, null);
       return;
     }
 
-    const parsedBody = JSON.parse(body);
+    if (response.statusCode !== 200) {
+      callback(Error(`Status Code ${response.statusCode} when fetching IP: ${body}`), null);
+      return;
+    }
+
+    const parsedBody = typeof body === 'string' ? JSON.parse(body) : body;
+    callback(null, parsedBody.ip);
+  });
+};
+
+const fetchCoordsByIP = function(ip, callback) {
+  const url = `https://ipwho.is/${ip}`;
+  needle.get(url, (error, response, body) => {
+    if (error) {
+      callback(error, null);
+      return;
+    }
+
+    const parsedBody = typeof body === 'string' ? JSON.parse(body) : body;
 
     if (!parsedBody.success) {
-      const message = `Success status was ${parsedBody.success}. Server message says: ${parsedBody.message} when fetching for IP ${parsedBody.ip}`;
-      callback(Error(message), null);
+      callback(Error(`Success status was ${parsedBody.success}. Server message: ${parsedBody.message}`), null);
       return;
     }
 
@@ -26,7 +42,6 @@ const fetchCoordsByIP = function(ip, callback) {
   });
 };
 
-
 const fetchISSFlyOverTimes = function(coords, callback) {
   const url = `https://iss-flyover.herokuapp.com/json/?lat=${coords.latitude}&lon=${coords.longitude}`;
 
@@ -37,17 +52,40 @@ const fetchISSFlyOverTimes = function(coords, callback) {
     }
 
     if (response.statusCode !== 200) {
-      const msg = `Status Code ${response.statusCode} when fetching ISS pass times. Response: ${body}`;
-      callback(Error(msg), null);
+      callback(Error(`Status Code ${response.statusCode} when fetching ISS pass times: ${body}`), null);
       return;
     }
 
-    const parsedBody = JSON.parse(body);
+    const parsedBody = typeof body === 'string' ? JSON.parse(body) : body;
     callback(null, parsedBody.response);
   });
 };
 
+const nextISSTimesForMyLocation = function(callback) {
+  fetchMyIP((error, ip) => {
+    if (error) {
+      return callback(error, null);
+    }
+
+    fetchCoordsByIP(ip, (error, coords) => {
+      if (error) {
+        return callback(error, null);
+      }
+
+      fetchISSFlyOverTimes(coords, (error, passes) => {
+        if (error) {
+          return callback(error, null);
+        }
+
+        callback(null, passes);
+      });
+    });
+  });
+};
+
 module.exports = {
+
   fetchCoordsByIP,
-  fetchISSFlyOverTimes
+  fetchISSFlyOverTimes,
+  nextISSTimesForMyLocation
 };
